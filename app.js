@@ -1,13 +1,42 @@
+// if(process.enc.NODE_ENV != "production"){
+  require("dotenv").config();
+
+
 const express = require("express");
 const app = express();
 const mongoose = require("mongoose");
-const Listing = require("./models/listing.js");
 const path = require("path");
 const methodOverride = require("method-override");
 const ejsMate = require("ejs-mate");
-const wrapAsync = require("./utils/wrapAsync.js");
 const ExpressError = require("./utils/ExpressError.js");
-const listingSchema = require("./schema.js");
+const session = require("express-session");
+const MongoStore = require('connect-mongo');
+const flash = require("connect-flash");
+const passport = require("passport");
+const LocalStrategy = require("passport-local");
+const User = require("./models/user.js");
+
+
+
+
+const listingsRouter = require("./routes/listing.js");
+const reviewsRouter = require("./routes/review.js");
+const userRouter = require("./routes/user.js");
+
+// let Mongo_url = 'mongodb://127.0.0.1:27017/wanderlust';
+let Url = process.env.ATLAS_URL;
+
+main()
+  .then((res) => {
+    console.log("connection establish !");
+  })
+  .catch((err) => {
+    console.log(err);
+  });
+
+async function main(){
+    await mongoose.connect(Url);
+}
 
 app.use(methodOverride("_method"));
 
@@ -19,113 +48,74 @@ app.use(express.urlencoded({extended:true}));
 app.engine('ejs',ejsMate);
 app.use(express.static(path.join(__dirname,"/public")));
 
-let Mongo_url = 'mongodb://127.0.0.1:27017/wanderlust';
 
-main()
-  .then((res) => {
-    console.log("connection establish !");
-  })
-  .catch((err) => {
-    console.log(err);
-  });
-
-async function main(){
-    await mongoose.connect(Mongo_url);
-}
-
-app.get("/",(req,res)=>{
-    res.send("root path");
-})
-
-const validateListing  = (req,res,next)=>{
-  let {error} = listingSchema.validate(req.body);
-  console.log(error);
-  if(error){
-    throw new ExpressError(400,error)
-  }else{
-    next();
-  }
-}
-
-//create route
-
-app.post("/listings",validateListing,wrapAsync(async (req, res, next) => {
-    // let {title,description,image,price,location,country} = req.body;
-    // let listing = req.body.listing; //gives JS object
-  
-    const newListing = new Listing(req.body.listing);
-    console.log(newListing);
-    await newListing.save();
-    res.redirect("/listings");
-  })
-);
-
-//new route
-
-app.get("/listings/new",(req,res)=>{
-    res.render("listings/new.ejs")
-})
-
-//show route
-
-app.get("/listings/:id",wrapAsync(async(req,res)=>{
-  let {id} = req.params;
-  const listing = await Listing.findById(id);
-  res.render("listings/show.ejs",{listing});
-})
-)
-
-//edit route
-
-app.get("/listings/:id/edit",wrapAsync(async(req,res)=>{
-  let {id} = req.params;
-  const listing  = await Listing.findById(id);
-  res.render("listings/edit.ejs",{listing});
-}
-));
-
-//update route
-
-app.put("/listings/:id",validateListing,wrapAsync(async(req,res)=>{
-  let {id} = req.params;
-  await Listing.findByIdAndUpdate(id,{...req.body.listing});
-  res.redirect("/listings");
-})
-);
-
-//delete route
-
-app.delete("/listings/:id",wrapAsync(async(req,res,next)=>{
-  let {id} = req.params;
-  await Listing.findByIdAndDelete(id);
-  res.redirect("/listings");
-})
-);
-
-//index route for listings
-
-app.get("/listings",wrapAsync(async(req,res)=>{
-  const allListings = await Listing.find({});
-  res.render("listings/index.ejs",{allListings});
-})
-);
-
-
-
-// app.get("/listingtest",async (req,res)=>{
-//     let sample = new Listing({
-//         title:"varanasi villa",
-//         description: "By the ganga",
-//         price:800,
-//         location:"banaras up",
-//         country:"india"
-
-//     }) 
-
-//     await sample.save();
-//     console.log("data saved");
-//     res.send("successful testing phase completed");
+// app.get("/",(req,res)=>{
+//   res.send("root path");
 // })
+
+const store = MongoStore.create({
+  mongoUrl : Url,
+  crypto: {             //encryption
+    secret : "supersecretcode",
+  },
+  touchAfter : 24 * 3600    //session time
+});
+
+store.on("error",()=>{
+  console.log("Error in Mongo Session Store",error);
+})
+
+const sessionOptions = {
+  store:store,
+  secret: "supersecretcode",
+  resave: false,
+  saveUninitialized: true,
+  cookie : {
+    expires : Date.now() + 7 * 24 * 60 * 60 * 1000,
+    maxAge : 7 * 24 * 60 * 60 * 1000,
+    httpOnly : true 
+  }
+};
+
+app.use(session(sessionOptions));
+app.use(flash());
+
+
+//passport middlewares ---> Start
+
+app.use(passport.initialize());
+app.use(passport.session());
+passport.use(new LocalStrategy(User.authenticate()));
+
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
+
+//end
+
+app.use((req,res,next)=>{
+  res.locals.success = req.flash("success");
+  res.locals.error = req.flash("error");
+  res.locals.currUser = req.user;
+  next();
+})
+
+//demo user
+
+// app.get("/demouser",async(req,res)=>{
+//   let fakeUser = new User({
+//     email:"mukul@gmail.com",
+//     username: "happy"
+//   })
+
+//   let demo = await User.register(fakeUser,"happy");
+//   res.send(demo);
+// });
+
+
+app.use("/listings",listingsRouter);
+app.use("/listings/:id/reviews",reviewsRouter);
+app.use("/",userRouter);
+
 
 app.all("*",(req,res,next)=>{
   next(new ExpressError(404,"page not found"));

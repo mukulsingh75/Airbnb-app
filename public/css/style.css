@@ -58,7 +58,7 @@ body{
 
 /* cards styling */
 
-.card{
+.listing-card{
     margin-bottom: 2rem;
     border: none !important;
 }
@@ -119,4 +119,20 @@ body{
 .show-card{
     padding-left: 0;
     padding-right: 0;
+}
+.icon{
+    font-size: 1.3rem ;
+}
+.img-original {
+    width: 85%; /* Adjust the width to fit the container */
+    max-height: 300px; /* Set a maximum height to prevent stretching */
+    object-fit: cover; /* Ensure the image covers the entire container */
+    border-radius: 10px; /* Apply a slight border radius for a smoother appearance */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.8); /* Add a subtle shadow for depth */
+}
+
+/* map */
+#map{
+    height: 400px;
+    width: 80vh;
 }
